@@ -123,6 +123,18 @@ def run_scan(domain):
     ssl_result = check_ssl_cert(clean)
     header_result = check_headers(clean)
 
+    # Unreachable site — no meaningful scan possible
+    if not header_result.get("reachable") and not ssl_result.get("valid"):
+        return {
+            "domain": clean,
+            "score": 0,
+            "ssl": ssl_result,
+            "headers": header_result,
+            "issues": ["Site unreachable — could not connect"],
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+            "unreachable": True,
+        }
+
     score = 100
     issues = []
 
