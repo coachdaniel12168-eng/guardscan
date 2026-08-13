@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""GuardScan — free website security header scanner.
+"""
+GuardScan — professional website security header & TLS scanner.
 
-Checks 7 critical security headers + SSL certificate, returns a 0-100 score
-and a list of issues. Free forever. Runs anywhere Python 3.7+ runs.
+Performs a remote security assessment of a target website:
+  - 8 security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options,
+    Referrer-Policy, Permissions-Policy, COOP, CORP)
+  - TLS certificate (issuer, validity, expiry)
+  - HTTPS redirection
+  - Cookie attributes (Secure, HttpOnly, SameSite)
+  - Server version disclosure
+
+Each finding includes severity, impact, remediation (Nginx + generic), and a
+reference (OWASP / CWE / MDN). Output is a graded report; use --json for
+machine-readable output.
 
 Usage:
     python guardscan.py example.com
     python guardscan.py example.com other.com
     python guardscan.py example.com --json
 
-Install dependency:
+Dependency:
     pip install requests
 """
 
@@ -29,21 +39,170 @@ except ImportError:
 
 REQUEST_TIMEOUT = 10
 
-SECURITY_HEADERS = {
-    "Strict-Transport-Security": {"weight": "high"},
-    "Content-Security-Policy": {"weight": "high"},
-    "X-Frame-Options": {"weight": "medium"},
-    "X-Content-Type-Options": {"weight": "medium"},
-    "Referrer-Policy": {"weight": "low"},
-    "Permissions-Policy": {"weight": "low"},
-    "X-XSS-Protection": {"weight": "low"},
-}
 
-WEIGHT_PENALTY = {"high": 10, "medium": 5, "low": 2}
+# ─────────────────────────────────────────────────────────────────────
+# SECURITY HEADER DEFINITIONS
+# Each entry: the check, its severity, what it prevents, the fix (Nginx +
+# generic), and a reference. This is the "computer engineer" knowledge base.
+# ─────────────────────────────────────────────────────────────────────
 
+HEADERS = [
+    {
+        "name": "Content-Security-Policy",
+        "severity": "critical",
+        "cwe": "CWE-79 (Cross-Site Scripting)",
+        "impact": (
+            "Without CSP, a single injected script can execute in your users' "
+            "browsers with your site's privileges — stealing sessions, logging "
+            "keystrokes, or defacing the page. This is the most important "
+            "defence-in-depth control a website can deploy."
+        ),
+        "fix": (
+            "Define a policy that only allows resources from your own origin. "
+            "Start restrictive and loosen only where a feature breaks."
+        ),
+        "nginx": (
+            'add_header Content-Security-Policy "default-src \'self\'; '
+            "script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "font-src 'self'; object-src 'none'; frame-ancestors 'self'; "
+            "base-uri 'self'; form-action 'self'\" always;"
+        ),
+        "generic": (
+            'Content-Security-Policy: default-src \'self\'; object-src \'none\'; '
+            "frame-ancestors 'self'"
+        ),
+        "reference": "OWASP CSP Cheat Sheet · MDN Content-Security-Policy",
+    },
+    {
+        "name": "Strict-Transport-Security",
+        "severity": "high",
+        "cwe": "CWE-319 (Cleartext Transmission)",
+        "impact": (
+            "Without HSTS, a user can still reach your site over plain HTTP "
+            "(e.g. typing the domain without https://), exposing traffic to "
+            "man-in-the-middle interception and credential theft."
+        ),
+        "fix": (
+            "Send the header with a long max-age and includeSubDomains. Add "
+            "'preload' only after confirming every subdomain is HTTPS."
+        ),
+        "nginx": (
+            'add_header Strict-Transport-Security "max-age=31536000; '
+            'includeSubDomains; preload" always;'
+        ),
+        "generic": (
+            "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+        ),
+        "reference": "OWASP HSTS Cheat Sheet · CWE-319",
+    },
+    {
+        "name": "X-Content-Type-Options",
+        "severity": "medium",
+        "cwe": "CWE-646 (MIME Sniffing)",
+        "impact": (
+            "Without 'nosniff', browsers may guess (sniff) a file's type and "
+            "execute a text file as a script, enabling stored-XSS via uploaded "
+            "content."
+        ),
+        "fix": "Set the header to exactly 'nosniff'. No configuration needed beyond that.",
+        "nginx": 'add_header X-Content-Type-Options "nosniff" always;',
+        "generic": "X-Content-Type-Options: nosniff",
+        "reference": "OWASP Secure Headers · CWE-646",
+    },
+    {
+        "name": "X-Frame-Options",
+        "severity": "medium",
+        "cwe": "CWE-1021 (Clickjacking)",
+        "impact": (
+            "Without frame protection, an attacker can embed your site in an "
+            "invisible iframe and trick users into clicking actions they never "
+            "intended (e.g. approving a transfer, changing settings)."
+        ),
+        "fix": (
+            "Send DENY (strongest) or SAMEORIGIN (if you frame your own pages). "
+            "Note: CSP 'frame-ancestors' is the modern equivalent and supersedes this."
+        ),
+        "nginx": 'add_header X-Frame-Options "DENY" always;',
+        "generic": "X-Frame-Options: DENY",
+        "reference": "OWASP Clickjacking Defense · CWE-1021",
+    },
+    {
+        "name": "Referrer-Policy",
+        "severity": "low",
+        "cwe": "CWE-200 (Information Exposure)",
+        "impact": (
+            "The Referer header can leak full URLs — including tokens and "
+            "sensitive paths — to third-party analytics, CDNs, or ad networks."
+        ),
+        "fix": (
+            "Use 'strict-origin-when-cross-origin': send only the origin "
+            "cross-site, and nothing on HTTPS-to-HTTP downgrades."
+        ),
+        "nginx": 'add_header Referrer-Policy "strict-origin-when-cross-origin" always;',
+        "generic": "Referrer-Policy: strict-origin-when-cross-origin",
+        "reference": "MDN Referrer-Policy · OWASP",
+    },
+    {
+        "name": "Permissions-Policy",
+        "severity": "low",
+        "cwe": "CWE-200 (Information Exposure)",
+        "impact": (
+            "Without a policy, embedded content can request powerful browser "
+            "features — camera, microphone, geolocation — without your consent."
+        ),
+        "fix": (
+            "Deny features your site never needs; allow only those you "
+            "explicitly use (e.g. 'geolocation=(self)')."
+        ),
+        "nginx": (
+            'add_header Permissions-Policy "camera=(), microphone=(), '
+            'geolocation=(), payment=(), usb=()" always;'
+        ),
+        "generic": "Permissions-Policy: camera=(), microphone=(), geolocation=()",
+        "reference": "MDN Permissions-Policy · OWASP",
+    },
+    {
+        "name": "Cross-Origin-Opener-Policy",
+        "severity": "medium",
+        "cwe": "CWE-1021 (Cross-site Interaction)",
+        "impact": (
+            "Without COOP, a malicious page can obtain a reference to your "
+            "window and read cross-origin data (the class of attacks behind "
+            "Spectre and related side-channels)."
+        ),
+        "fix": (
+            "Set 'same-origin' so your document is isolated from other origins' "
+            "window references. Verify OAuth/popup flows still work afterward."
+        ),
+        "nginx": 'add_header Cross-Origin-Opener-Policy "same-origin" always;',
+        "generic": "Cross-Origin-Opener-Policy: same-origin",
+        "reference": "MDN Cross-Origin-Opener-Policy",
+    },
+    {
+        "name": "Cross-Origin-Resource-Policy",
+        "severity": "low",
+        "cwe": "CWE-200 (Information Exposure)",
+        "impact": (
+            "Without CORP, other origins can embed and read your resources "
+            "(images, scripts, data) in their own contexts, enabling "
+            "cross-origin information leakage."
+        ),
+        "fix": (
+            "Set 'same-origin' (or 'same-site' if you share resources across "
+            "your own subdomains)."
+        ),
+        "nginx": 'add_header Cross-Origin-Resource-Policy "same-origin" always;',
+        "generic": "Cross-Origin-Resource-Policy: same-origin",
+        "reference": "MDN Cross-Origin-Resource-Policy",
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# SCAN FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────
 
 def normalize_domain(domain):
-    """Strip protocol, path, and www prefix."""
     domain = domain.strip().lower()
     if not domain.startswith(("http://", "https://")):
         domain = "https://" + domain
@@ -51,60 +210,94 @@ def normalize_domain(domain):
     return hostname.replace("www.", "")
 
 
-def check_ssl_cert(domain):
-    """Check SSL certificate validity and expiry."""
+def check_tls(domain):
+    """Inspect the TLS certificate and negotiated protocol."""
     try:
         ctx = ssl.create_default_context()
         with socket.create_connection((domain, 443), timeout=REQUEST_TIMEOUT) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
+                tls_version = ssock.version()
                 not_after = cert.get("notAfter", "")
                 issuer = dict(x[0] for x in cert.get("issuer", []))
+                subject = dict(x[0] for x in cert.get("subject", []))
                 expiry = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
                 expiry = expiry.replace(tzinfo=timezone.utc)
                 days_left = (expiry - datetime.now(timezone.utc)).days
                 return {
                     "valid": True,
                     "issuer": issuer.get("organizationName", "Unknown"),
+                    "subject_cn": subject.get("commonName", domain),
+                    "tls_version": tls_version,
                     "days_left": days_left,
                     "expiry": not_after,
-                    "status": "good" if days_left > 30 else ("warning" if days_left > 7 else "critical"),
+                    "status": ("good" if days_left > 30 else
+                               ("warning" if days_left > 7 else "critical")),
                 }
     except Exception as e:
-        return {"valid": False, "error": str(e)[:100]}
+        return {"valid": False, "error": str(e)[:120]}
+
+
+def check_https_redirect(domain):
+    """Verify http:// redirects to https://."""
+    try:
+        r = requests.get(f"http://{domain}", timeout=REQUEST_TIMEOUT,
+                         allow_redirects=False,
+                         headers={"User-Agent": "GuardScan/2.0"})
+        if r.status_code in (301, 302, 303, 307, 308):
+            loc = r.headers.get("Location", "")
+            if loc.startswith("https://"):
+                return {"redirects": True, "status": r.status_code, "target": loc}
+            return {"redirects": False, "status": r.status_code,
+                    "target": loc, "note": "redirects to non-HTTPS location"}
+        if r.status_code == 200:
+            return {"redirects": False, "status": 200,
+                    "note": "serves content over plain HTTP"}
+        return {"redirects": False, "status": r.status_code}
+    except Exception as e:
+        return {"redirects": False, "error": str(e)[:120]}
 
 
 def check_headers(domain):
-    """Check security headers, cookies, and server header."""
-    results = {}
+    """Fetch the site and inspect headers + cookies."""
     try:
         resp = requests.get(
-            f"https://{domain}",
-            timeout=REQUEST_TIMEOUT,
-            allow_redirects=True,
-            headers={"User-Agent": "GuardScan/1.0 (Security Scanner)"},
+            f"https://{domain}", timeout=REQUEST_TIMEOUT, allow_redirects=True,
+            headers={"User-Agent": "GuardScan/2.0 (Security Scanner)"},
         )
-        response_headers = {k.lower(): v for k, v in resp.headers.items()}
-        for header in SECURITY_HEADERS:
-            hl = header.lower()
-            results[header] = {
-                "present": hl in response_headers,
-                "value": response_headers.get(hl, None),
+        raw = {k.lower(): v for k, v in resp.headers.items()}
+
+        headers = {}
+        for h in HEADERS:
+            hl = h["name"].lower()
+            headers[h["name"]] = {
+                "present": hl in raw,
+                "value": raw.get(hl, None),
             }
+
+        # Cookies — Secure, HttpOnly, SameSite
         cookies = []
+        set_cookie = raw.get("set-cookie", "")
         for cookie in resp.cookies:
             cookies.append({
                 "name": cookie.name,
                 "secure": bool(cookie.secure),
-                "httponly": bool(cookie.has_nonstandard_attr("HttpOnly") or cookie.has_nonstandard_attr("httponly")),
+                "httponly": bool(cookie.has_nonstandard_attr("HttpOnly")
+                                 or cookie.has_nonstandard_attr("httponly")),
+                # SameSite detected from the raw header string
+                "samesite": ("Lax" if "samesite=lax" in set_cookie.lower()
+                             else "Strict" if "samesite=strict" in set_cookie.lower()
+                             else "None" if "samesite=none" in set_cookie.lower()
+                             else "missing"),
             })
+
         return {
             "reachable": True,
             "status_code": resp.status_code,
             "final_url": resp.url,
-            "headers": results,
+            "headers": headers,
             "cookies": cookies,
-            "server_header": response_headers.get("server", ""),
+            "server_header": raw.get("server", ""),
             "response_time_ms": round(resp.elapsed.total_seconds() * 1000),
         }
     except requests.exceptions.SSLError:
@@ -117,105 +310,233 @@ def check_headers(domain):
         return {"reachable": False, "error": str(e)[:200]}
 
 
-def run_scan(domain):
-    """Run a full scan: SSL + headers + score."""
+# ─────────────────────────────────────────────────────────────────────
+# ANALYSIS
+# ─────────────────────────────────────────────────────────────────────
+
+SEVERITY_PENALTY = {"critical": 30, "high": 20, "medium": 8, "low": 4}
+
+
+def analyze(domain):
     clean = normalize_domain(domain)
-    ssl_result = check_ssl_cert(clean)
-    header_result = check_headers(clean)
+    tls = check_tls(clean)
+    headers = check_headers(clean)
+    redirect = check_https_redirect(clean)
 
-    # Unreachable site — no meaningful scan possible
-    if not header_result.get("reachable") and not ssl_result.get("valid"):
-        return {
-            "domain": clean,
-            "score": 0,
-            "ssl": ssl_result,
-            "headers": header_result,
-            "issues": ["Site unreachable — could not connect"],
-            "scanned_at": datetime.now(timezone.utc).isoformat(),
-            "unreachable": True,
-        }
+    # Unreachable → short-circuit
+    if not headers.get("reachable") and not tls.get("valid"):
+        return {"domain": clean, "score": 0, "unreachable": True,
+                "findings": [], "passing": [], "tls": tls, "redirect": redirect,
+                "scanned_at": datetime.now(timezone.utc).isoformat()}
 
+    findings = []
+    passing = []
+
+    # 1. Security header findings
+    for h in HEADERS:
+        state = headers.get("headers", {}).get(h["name"], {})
+        if not state.get("present"):
+            findings.append({
+                "check": h["name"], "status": "missing",
+                "severity": h["severity"], "cwe": h["cwe"],
+                "impact": h["impact"], "fix": h["fix"],
+                "nginx": h["nginx"], "generic": h["generic"],
+                "reference": h["reference"],
+            })
+        else:
+            passing.append({"check": h["name"], "status": "present",
+                            "value": state.get("value")})
+
+    # 2. TLS findings
+    if not tls.get("valid"):
+        findings.append({
+            "check": "TLS certificate", "status": "invalid", "severity": "critical",
+            "cwe": "CWE-295 (Improper Certificate Validation)",
+            "impact": "The TLS certificate is invalid or could not be verified. "
+                      "Traffic cannot be trusted to be encrypted or authenticated.",
+            "fix": "Install a valid certificate from a trusted CA and ensure the "
+                   "hostname matches.",
+            "nginx": "ssl_certificate /etc/ssl/fullchain.pem;  ssl_certificate_key /etc/ssl/privkey.pem;",
+            "generic": "Provision a valid certificate (e.g. Let's Encrypt via certbot).",
+            "reference": "CWE-295",
+        })
+    else:
+        if tls.get("status") == "critical":
+            findings.append({
+                "check": "TLS certificate expiry", "status": "expiring",
+                "severity": "critical", "cwe": "CWE-295",
+                "impact": f"Certificate expires in {tls['days_left']} days. "
+                          "On expiry your site will show a browser warning and lose all traffic.",
+                "fix": "Renew the certificate immediately and automate renewal.",
+                "nginx": "certbot renew --dry-run   # then ensure a cron job runs 'certbot renew'",
+                "generic": "Enable auto-renewal (Let's Encrypt renews every 60-90 days).",
+                "reference": "Let's Encrypt docs",
+            })
+        elif tls.get("status") == "warning":
+            findings.append({
+                "check": "TLS certificate expiry", "status": "expiring soon",
+                "severity": "medium", "cwe": "CWE-295",
+                "impact": f"Certificate expires in {tls['days_left']} days.",
+                "fix": "Schedule renewal well before expiry.",
+                "nginx": "certbot renew",
+                "generic": "Ensure auto-renewal is active.",
+                "reference": "Let's Encrypt docs",
+            })
+        else:
+            passing.append({"check": "TLS certificate",
+                            "status": "valid",
+                            "value": f"{tls['issuer']} · {tls['days_left']} days · {tls.get('tls_version','')}"})
+
+    # 3. HTTPS redirect finding
+    if not redirect.get("redirects"):
+        findings.append({
+            "check": "HTTPS redirect", "status": "not enforced",
+            "severity": "high", "cwe": "CWE-319",
+            "impact": "Visitors can reach the site over plain HTTP, where traffic "
+                      "is unencrypted and vulnerable to interception.",
+            "fix": "Permanently redirect all HTTP traffic to HTTPS.",
+            "nginx": "server { listen 80; server_name example.com; return 301 https://$host$request_uri; }",
+            "generic": "Enable 'force HTTPS redirect' in your CDN/host (Vercel, Cloudflare, Netlify).",
+            "reference": "OWASP Transport Layer Protection",
+        })
+    else:
+        passing.append({"check": "HTTPS redirect", "status": "enforced",
+                        "value": f"HTTP {redirect.get('status')} → {redirect.get('target','https')}"})
+
+    # 4. Cookie findings
+    for c in headers.get("cookies", []):
+        problems = []
+        if not c["secure"]:
+            problems.append("Secure flag missing")
+        if not c["httponly"]:
+            problems.append("HttpOnly flag missing")
+        if c["samesite"] == "missing":
+            problems.append("SameSite attribute missing")
+        if problems:
+            findings.append({
+                "check": f"Cookie '{c['name']}'", "status": ", ".join(problems),
+                "severity": "medium", "cwe": "CWE-614 (Insecure Cookie)",
+                "impact": f"The cookie '{c['name']}' lacks: {', '.join(problems)}. "
+                          "Without Secure it can leak over HTTP; without HttpOnly "
+                          "it can be stolen by XSS; without SameSite it is exposed to CSRF.",
+                "fix": "Set the flags when issuing the cookie.",
+                "nginx": f"add_header Set-Cookie \"{c['name']}=...; Secure; HttpOnly; SameSite=Lax; Path=/\";",
+                "generic": f"Set-Cookie: {c['name']}=...; Secure; HttpOnly; SameSite=Lax",
+                "reference": "OWASP Session Management · CWE-614",
+            })
+
+    # 5. Server header finding
+    server = headers.get("server_header", "")
+    if server:
+        findings.append({
+            "check": "Server header disclosure", "status": f"exposes '{server}'",
+            "severity": "low", "cwe": "CWE-200",
+            "impact": "Revealing the server name/version helps an attacker target "
+                      "known exploits for that specific software.",
+            "fix": "Remove or neutralise the Server header.",
+            "nginx": "server_tokens off;   # then: add_header Server \"\" always;  (or proxy_hide_header Server;)",
+            "generic": "Most CDNs/hosts let you remove the Server header in settings.",
+            "reference": "CWE-200",
+        })
+
+    # Score
     score = 100
-    issues = []
-
-    if not ssl_result.get("valid"):
-        score -= 30
-        issues.append("HTTPS not available or SSL invalid")
-    elif ssl_result.get("status") == "critical":
-        score -= 25
-        issues.append(f"SSL certificate expires in {ssl_result['days_left']} days")
-    elif ssl_result.get("status") == "warning":
-        score -= 10
-        issues.append(f"SSL certificate expires in {ssl_result['days_left']} days")
-
-    if header_result.get("reachable"):
-        for header, result in header_result["headers"].items():
-            if not result["present"]:
-                penalty = WEIGHT_PENALTY.get(SECURITY_HEADERS[header]["weight"], 5)
-                score -= penalty
-                issues.append(f"Missing {header}")
-        insecure_cookies = [c for c in header_result.get("cookies", []) if not c["secure"]]
-        if insecure_cookies:
-            score -= 5
-            issues.append(f"{len(insecure_cookies)} cookie(s) without Secure flag")
-        if header_result.get("server_header"):
-            score -= 5
-            issues.append(f"Server header exposes version: {header_result['server_header']}")
-
+    for f in findings:
+        score -= SEVERITY_PENALTY.get(f["severity"], 5)
     score = max(0, min(100, score))
-    return {
-        "domain": clean,
-        "score": score,
-        "ssl": ssl_result,
-        "headers": header_result,
-        "issues": issues,
-        "scanned_at": datetime.now(timezone.utc).isoformat(),
-    }
+
+    return {"domain": clean, "score": score, "unreachable": False,
+            "findings": findings, "passing": passing, "tls": tls,
+            "redirect": redirect,
+            "scanned_at": datetime.now(timezone.utc).isoformat()}
 
 
-def render_text(result):
-    """Render a human-readable report."""
-    lines = []
-    lines.append("=" * 56)
-    lines.append(f"  GuardScan — {result['domain']}")
-    lines.append("=" * 56)
-    lines.append(f"  Score: {result['score']}/100")
+def grade(score):
+    if score >= 90: return "A"
+    if score >= 80: return "B"
+    if score >= 70: return "C"
+    if score >= 60: return "D"
+    return "F"
 
-    if result["score"] >= 80:
-        lines.append("  Verdict: Good — minor gaps only")
-    elif result["score"] >= 50:
-        lines.append("  Verdict: Needs work — several gaps")
+
+# ─────────────────────────────────────────────────────────────────────
+# REPORT RENDERING
+# ─────────────────────────────────────────────────────────────────────
+
+def render(result):
+    if result.get("unreachable"):
+        return (f"========================================\n"
+                f"  GuardScan — {result['domain']}\n"
+                f"========================================\n"
+                f"  Site unreachable — could not connect.\n")
+
+    L = []
+    bar = "═" * 56
+    L.append(bar)
+    L.append(f"  GuardScan — Security Assessment Report")
+    L.append(bar)
+    L.append(f"  Target:    {result['domain']}")
+    L.append(f"  Scanned:   {result['scanned_at'][:19]} (UTC)")
+    L.append(f"  Score:     {result['score']}/100  (Grade {grade(result['score'])})")
+    L.append("")
+
+    sev_order = ["critical", "high", "medium", "low"]
+    counts = {s: sum(1 for f in result["findings"] if f["severity"] == s) for s in sev_order}
+    L.append(f"  Critical: {counts['critical']}   High: {counts['high']}   "
+             f"Medium: {counts['medium']}   Low: {counts['low']}")
+    L.append("")
+
+    if result["findings"]:
+        L.append("─" * 56)
+        L.append("  FINDINGS")
+        L.append("─" * 56)
+        for sev in sev_order:
+            for f in result["findings"]:
+                if f["severity"] != sev:
+                    continue
+                L.append("")
+                L.append(f"[{f['severity'].upper()}] {f['check']}")
+                L.append(f"  Status:      {f['status']}")
+                L.append(f"  Severity:    {f['severity']}  ·  {f.get('cwe','')}")
+                L.append(f"  Impact:      {f['impact']}")
+                L.append(f"  Fix:         {f['fix']}")
+                if f.get("nginx"):
+                    L.append(f"  Nginx:       {f['nginx']}")
+                L.append(f"  Generic:     {f.get('generic','')}")
+                L.append(f"  Reference:   {f.get('reference','')}")
     else:
-        lines.append("  Verdict: Critical — significant gaps")
+        L.append("  No findings — all checks passed.")
 
-    lines.append("")
-    lines.append("  Issues:")
-    if result["issues"]:
-        for issue in result["issues"]:
-            lines.append(f"    - {issue}")
-    else:
-        lines.append("    None — all checks passed.")
+    if result["passing"]:
+        L.append("")
+        L.append("─" * 56)
+        L.append("  PASSING CHECKS")
+        L.append("─" * 56)
+        for p in result["passing"]:
+            val = f"  ({p['value']})" if p.get("value") else ""
+            L.append(f"  ✓ {p['check']}{val}")
 
-    if result["ssl"].get("valid"):
-        lines.append("")
-        lines.append(f"  SSL: valid (issuer {result['ssl']['issuer']}, expires in {result['ssl']['days_left']} days)")
-    lines.append("")
-    return "\n".join(lines)
+    L.append("")
+    L.append(bar)
+    return "\n".join(L)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GuardScan — free website security header scanner")
+    parser = argparse.ArgumentParser(
+        description="GuardScan — professional website security header & TLS scanner")
     parser.add_argument("domains", nargs="+", help="Domain(s) to scan, e.g. example.com")
     parser.add_argument("--json", action="store_true", help="Output JSON instead of text")
     args = parser.parse_args()
 
-    results = [run_scan(d) for d in args.domains]
+    results = [analyze(d) for d in args.domains]
 
     if args.json:
         print(json.dumps(results if len(results) > 1 else results[0], indent=2))
     else:
-        for r in results:
-            print(render_text(r))
+        for i, r in enumerate(results):
+            if i:
+                print("\n\n")
+            print(render(r))
 
 
 if __name__ == "__main__":

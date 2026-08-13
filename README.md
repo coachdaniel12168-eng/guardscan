@@ -1,22 +1,17 @@
 # GuardScan
 
-**A free, one-file website security scanner.** Checks 7 critical security headers and your SSL certificate, returns a 0–100 score and a list of exactly what to fix. Runs anywhere Python runs.
+**A professional website security scanner in a single file.** Checks 8 security headers, your TLS certificate, HTTPS redirection, and cookie flags — then returns a graded report with severity, impact, and exact remediation for every finding.
 
 ```
-$ python guardscan.py example.com
+════════════════════════════════════════════════════════
+  GuardScan — Security Assessment Report
+════════════════════════════════════════════════════════
+  Target:    example.com
+  Scanned:   2026-08-13T09:57:47 (UTC)
+  Score:     84/100  (Grade B)
 
-========================================================
-  GuardScan — example.com
-========================================================
-  Score: 60/100
-  Verdict: Needs work — several gaps
-
-  Issues:
-    - Missing Content-Security-Policy
-    - Missing X-Frame-Options
-    - 2 cookie(s) without Secure flag
-
-  SSL: valid (issuer Let's Encrypt, expires in 83 days)
+  Critical: 0   High: 0   Medium: 1   Low: 2
+  ...
 ```
 
 ---
@@ -43,36 +38,45 @@ That's it. No API key, no account, no telemetry.
 
 ## What GuardScan checks
 
-| Check | Why it matters |
-|---|---|
-| Strict-Transport-Security | Forces HTTPS, prevents downgrade attacks |
-| Content-Security-Policy | Stops cross-site scripting (XSS) |
-| X-Frame-Options | Prevents clickjacking |
-| X-Content-Type-Options | Stops MIME sniffing |
-| Referrer-Policy | Controls referrer leakage |
-| Permissions-Policy | Limits camera/mic/geolocation access |
-| X-XSS-Protection | Legacy XSS filter |
-| SSL certificate | Validity and expiry (30/7-day warnings) |
-| Cookies | Secure + HttpOnly flags |
-| Server header | Version disclosure |
+| Check | Severity | What it prevents |
+|---|---|---|
+| Content-Security-Policy | Critical | Cross-site scripting (XSS) |
+| Strict-Transport-Security | High | Cleartext / MITM interception |
+| Cross-Origin-Opener-Policy | Medium | Cross-site interaction (Spectre) |
+| X-Content-Type-Options | Medium | MIME sniffing / stored XSS |
+| X-Frame-Options | Medium | Clickjacking |
+| Cross-Origin-Resource-Policy | Low | Cross-origin resource leakage |
+| Referrer-Policy | Low | Token / path leakage in referrer |
+| Permissions-Policy | Low | Camera / mic / geolocation abuse |
+| TLS certificate | Critical | Invalid or expiring cert |
+| HTTPS redirect | High | Plain-HTTP traffic exposure |
+| Cookies (Secure/HttpOnly/SameSite) | Medium | Session theft & CSRF |
+| Server header | Low | Version disclosure |
 
-## How it works
+## Every finding includes
 
-GuardScan sends a single HTTPS request to the target domain, inspects the response headers and cookies, and validates the SSL certificate. It never touches the target's server beyond a normal GET request — the same as a browser visit. Each missing header is weighted by severity (high/medium/low) and subtracted from a 100-point baseline.
+- **Severity** (critical / high / medium / low) + the relevant **CWE**
+- **Impact** — the attack it enables, in plain terms
+- **Fix** — what to do
+- **Nginx** — copy-paste `add_header` directive
+- **Generic** — the raw header value (works on any CDN/host)
+- **Reference** — OWASP / CWE / MDN
 
 ## Scoring
 
-- **80–100** — good, minor gaps only
-- **50–79** — needs work, several gaps
-- **0–49** — critical, significant gaps
+- **90–100 — A** · 80–89 B · 70–79 C · 60–69 D · below 60 F
 
 ## Why this exists
 
-We scanned hundreds of AI company websites and found most fail basic security checks — **the full data is in our [AI Security Report](https://arkprivate.com/ai-security-report.html)**. GuardScan is the free tool from that research, so anyone can check their own site in seconds.
+We scanned hundreds of AI company websites and found most fail basic security checks — **the full data is in our [AI Security Report](https://arkprivate.com/ai-security-report.html)**. GuardScan is the free tool from that research, so anyone can assess their own site in seconds.
 
 ## About the product
 
-GuardScan is the free scanner from [Ark Private](https://arkprivate.com) — an AI safety suite. If you run an AI bot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
+GuardScan is the free scanner from [Ark Private](https://arkprivate.com). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
+
+## Reporting vulnerabilities
+
+See [SECURITY.md](SECURITY.md).
 
 ## License
 
