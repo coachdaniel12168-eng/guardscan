@@ -70,6 +70,8 @@ That's it. No API key, no account, no telemetry.
 
 → [arkprivate.com](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan) — instant scan, copy-paste fixes, 2 seconds, no signup.
 
+→ Or on Telegram: [@GuarddScanVPbot](https://t.me/GuarddScanVPbot) — send `/scan yoursite.com`, get your score in chat.
+
 ## About the product
 
 GuardScan is the free scanner from [Ark Private](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
