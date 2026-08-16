@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 8 * * 1'  # weekly self-check (Mon 8am UTC)
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependency
+        run: pip install requests
+      - name: Self-test — scan a live site
+        run: |
+          python guardscan.py example.com
+          echo "---"
+          echo "Machine-readable output check:"
+          python guardscan.py example.com --json | python -c "import sys,json; d=json.load(sys.stdin); print('OK — JSON valid, keys:', sorted(d.keys())[:8])"

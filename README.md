@@ -2,19 +2,19 @@
 
 **A professional website security scanner in a single file.** Checks 8 security headers, your TLS certificate, HTTPS redirection, and cookie flags — then returns a graded report with severity, impact, and exact remediation for every finding.
 
-```
-════════════════════════════════════════════════════════
-  GuardScan — Security Assessment Report
-════════════════════════════════════════════════════════
-  Target:    example.com
-  Scanned:   2026-08-13T09:57:47 (UTC)
-  Score:     84/100  (Grade B)
+![CI](https://github.com/coachdaniel12168-eng/guardscan/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Report](https://img.shields.io/badge/data-893%20sites%20scanned-blue)
 
-  Critical: 0   High: 0   Medium: 1   Low: 2
-  ...
-```
+![GuardScan demo](demo.gif)
 
 ---
+
+## The reason this exists
+
+We scanned **893 AI company websites**. **77% failed** a basic security check — and **1 in 4 had zero security headers at all**. Full data and methodology: **[REPORT.md](REPORT.md)**.
+
+GuardScan is the free tool from that research, so anyone can assess their own site in seconds.
 
 ## Quick start
 
@@ -66,13 +66,13 @@ That's it. No API key, no account, no telemetry.
 
 - **90–100 — A** · 80–89 B · 70–79 C · 60–69 D · below 60 F
 
-## Why this exists
+## Scan your own site free — no install
 
-We scanned hundreds of AI company websites and found most fail basic security checks — **the full data is in our [AI Security Report](https://arkprivate.com/ai-security-report.html)**. GuardScan is the free tool from that research, so anyone can assess their own site in seconds.
+→ [arkprivate.com](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan) — instant scan, copy-paste fixes, 2 seconds, no signup.
 
 ## About the product
 
-GuardScan is the free scanner from [Ark Private](https://arkprivate.com). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
+GuardScan is the free scanner from [Ark Private](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
 
 ## Reporting vulnerabilities
 
