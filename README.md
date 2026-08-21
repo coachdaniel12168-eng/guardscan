@@ -1,6 +1,6 @@
 # GuardScan
 
-**A professional website security scanner in a single file.** Checks 8 security headers, your TLS certificate, HTTPS redirection, and cookie flags — then returns a graded report with severity, impact, and exact remediation for every finding.
+**A professional website security scanner in a single file.** Checks 7 security headers, your TLS certificate, HTTPS redirection, and cookie flags — then returns a graded report with severity, impact, and exact remediation for every finding.
 
 ![CI](https://github.com/coachdaniel12168-eng/guardscan/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)

@@ -3,8 +3,8 @@
 GuardScan — professional website security header & TLS scanner.
 
 Performs a remote security assessment of a target website:
-  - 8 security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options,
-    Referrer-Policy, Permissions-Policy, COOP, CORP)
+  - 7 security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options,
+    Referrer-Policy, Permissions-Policy, X-XSS-Protection)
   - TLS certificate (issuer, validity, expiry)
   - HTTPS redirection
   - Cookie attributes (Secure, HttpOnly, SameSite)
@@ -162,38 +162,21 @@ HEADERS = [
         "reference": "MDN Permissions-Policy · OWASP",
     },
     {
-        "name": "Cross-Origin-Opener-Policy",
-        "severity": "medium",
-        "cwe": "CWE-1021 (Cross-site Interaction)",
-        "impact": (
-            "Without COOP, a malicious page can obtain a reference to your "
-            "window and read cross-origin data (the class of attacks behind "
-            "Spectre and related side-channels)."
-        ),
-        "fix": (
-            "Set 'same-origin' so your document is isolated from other origins' "
-            "window references. Verify OAuth/popup flows still work afterward."
-        ),
-        "nginx": 'add_header Cross-Origin-Opener-Policy "same-origin" always;',
-        "generic": "Cross-Origin-Opener-Policy: same-origin",
-        "reference": "MDN Cross-Origin-Opener-Policy",
-    },
-    {
-        "name": "Cross-Origin-Resource-Policy",
+        "name": "X-XSS-Protection",
         "severity": "low",
-        "cwe": "CWE-200 (Information Exposure)",
+        "cwe": "CWE-79 (Cross-Site Scripting)",
         "impact": (
-            "Without CORP, other origins can embed and read your resources "
-            "(images, scripts, data) in their own contexts, enabling "
-            "cross-origin information leakage."
+            "Without X-XSS-Protection, older browsers do not filter "
+            "reflected cross-site scripting attempts, allowing injected "
+            "scripts to execute in the page."
         ),
         "fix": (
-            "Set 'same-origin' (or 'same-site' if you share resources across "
-            "your own subdomains)."
+            "Set '1; mode=block' to enable the browser's built-in XSS "
+            "filter and block the page outright when an attack is detected."
         ),
-        "nginx": 'add_header Cross-Origin-Resource-Policy "same-origin" always;',
-        "generic": "Cross-Origin-Resource-Policy: same-origin",
-        "reference": "MDN Cross-Origin-Resource-Policy",
+        "nginx": 'add_header X-XSS-Protection "1; mode=block" always;',
+        "generic": "X-XSS-Protection: 1; mode=block",
+        "reference": "MDN X-XSS-Protection",
     },
 ]
 
