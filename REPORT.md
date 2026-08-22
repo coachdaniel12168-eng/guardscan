@@ -64,7 +64,7 @@ If you've added a chatbot or AI agents, that's where the risk doubles — but st
 
 - **What:** the homepage of each company's primary domain.
 - **How:** the open-source scanner in this repo (7 headers, over HTTPS).
-- **When:** data as of August 21, 2026; updated automatically.
+- **When:** data as of August 22, 2026; updated automatically.
 - **Fail threshold:** fewer than 4 of 7 security headers present.
 - **Source list:** AI/ML companies from public startup and model directories.
 
