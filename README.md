@@ -74,7 +74,7 @@ That's it. No API key, no account, no telemetry.
 
 ## About the product
 
-GuardScan is the free scanner from [Ark Private](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Free scan first; continuous protection if you need it.
+GuardScan is the free scanner from [Ark Private](https://arkprivate.com?utm_source=github&utm_medium=readme&utm_campaign=guardscan). If you run an AI chatbot or AI agents, ArkGuard sandboxes them and PromptGuard tests them against prompt-injection. Shipping code written by AI tools? [ShipGuard](https://arkprivate.com/pricing?utm_source=github&utm_medium=readme&utm_campaign=guardscan) reviews AI-written code with an independent cross-model audit — catching hardcoded credentials and silently weakened tests before they ship. Free scan first; continuous protection if you need it.
 
 ## Reporting vulnerabilities
 
