@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/coachdaniel12168-eng/guardscan/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Report](https://img.shields.io/badge/data-893%20sites%20scanned-blue)
+![Report](https://img.shields.io/badge/data-1219%20sites%20scanned-blue)
 
 ![GuardScan demo](demo.gif)
 
@@ -12,7 +12,7 @@
 
 ## The reason this exists
 
-We scanned **893 AI company websites**. **77% failed** a basic security check — and **1 in 4 had zero security headers at all**. Full data and methodology: **[REPORT.md](REPORT.md)**.
+We scanned **1,219 AI company websites**. **73% failed** a basic security check — and **1 in 4 had zero security headers at all**. Full data and methodology: **[REPORT.md](REPORT.md)**.
 
 GuardScan is the free tool from that research, so anyone can assess their own site in seconds.
 
